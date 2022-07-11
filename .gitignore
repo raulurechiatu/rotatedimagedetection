@@ -1,2 +1,6 @@
 /venv
 .idea/
+/resources/images/ssip_20k_cards/
+*/__pycache__/*
+*__pycache__*
+__pycache__/
