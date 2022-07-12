@@ -3,6 +3,7 @@ import yaml
 from yaml.loader import SafeLoader
 from pathlib import Path
 import os
+from scipy.ndimage import rotate
 import util.constants as constants
 
 
@@ -42,16 +43,25 @@ def parse_yaml_data(yaml_array, imgs):
             y = yaml_data[current_property+1]
             width = yaml_data[current_property+2]
             height = yaml_data[current_property+3]
+            angle = yaml_data[current_property + 4]
 
-            corner_rect = imgs[yaml_entry][x:x + height, y:y + width]
+            # this offset is needed because the rotation of the image yielded partially cropped images
+            size_offset = 5
+            half_height = int(height/2) + size_offset
+            half_width = int(width/2) + size_offset
+
+            corner_rect = imgs[yaml_entry][y - half_height:y + half_height, x - half_width:x + half_width]
+
             if len(corner_rect) == 0:
                 continue
 
-            corner_rect = cv2.resize(corner_rect, (constants.training_image_width, constants.training_image_height), interpolation=cv2.INTER_AREA)
+            corner_rect = rotate(corner_rect, angle-90)
+            corner_rect = cv2.resize(corner_rect, (constants.training_image_width, constants.training_image_height),
+                                     interpolation=cv2.INTER_AREA)
 
             card_data = CardData(x, y,
                                  width, height,
-                                 yaml_data[current_property + 4],  # angle
+                                 angle,  # angle
                                  yaml_data[current_property + 5],  # card_id
                                  corner_rect)
             current_data.append(card_data)

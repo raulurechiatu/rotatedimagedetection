@@ -26,4 +26,3 @@ if __name__ == '__main__':
     # print(len(rectangles))
     gc.collect()
     ns.start_training(image_data, total_cards)
-

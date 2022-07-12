@@ -12,22 +12,26 @@ def start_training(image_data, total_cards_number):
     X_train = tf.convert_to_tensor(X_train, dtype=tf.float32)
     X_test = tf.convert_to_tensor(X_test, dtype=tf.float32)
 
-    model = get_model()
-    # model = create_ResNet50V2(constants.training_image_height, constants.training_image_width)
+    # (X_train, Y_train), (X_test, Y_test) = tf.keras.datasets.cifar10.load_data()
+    # X_train, X_test = X_train / 255.0, X_test / 255.0
+
+    # model = get_model()
+    model = create_ResNet50V2(constants.training_image_height, constants.training_image_width)
     model.summary()
 
     model.compile(optimizer=tf.keras.optimizers.Adam(),
                   loss=tf.keras.losses.SparseCategoricalCrossentropy(),
                   metrics=['accuracy'])
 
-    history = model.fit(X_train, Y_train, epochs=5,
+    history = model.fit(X_train, Y_train, epochs=10, batch_size=8,
                         validation_data=(X_test, Y_test))
 
-    test_loss, test_acc, test_metric2, test_metric3 = model.evaluate(X_test, Y_test, verbose=1)
+    test_loss, test_acc = model.evaluate(X_test, Y_test, verbose=1)
+    print("Loss: ", test_loss, " Acc: ", test_acc)
 
 
 def get_data(labels, total_cards_number):
-    classes = np.empty((total_cards_number, 1))
+    classes = np.empty((total_cards_number, 1), dtype='float16')
     data = np.empty((total_cards_number, constants.training_image_height, constants.training_image_width), dtype='float32')
     id = 0
     for label in labels:
@@ -44,6 +48,7 @@ def get_model():
     model = tf.keras.models.Sequential()
     model.add(tf.keras.layers.Conv2D(32, (3, 3), activation='relu', input_shape=(constants.training_image_height,
                                                                                  constants.training_image_width, 1)))
+    # model.add(tf.keras.layers.Conv2D(16, (3, 3), activation='relu', input_shape=(32, 32, 3)))
     model.add(tf.keras.layers.MaxPooling2D((2, 2)))
     model.add(tf.keras.layers.Conv2D(64, (3, 3), activation='relu'))
     model.add(tf.keras.layers.MaxPooling2D((2, 2)))
@@ -90,6 +95,8 @@ def create_ResNet50V2(width, height):
 
 
 def gpu_setup():
+    # This line stops the usage of GPU in tensorflow, needed because the network would not start on GPU
+    tf.config.set_visible_devices([], 'GPU')
     tf.get_logger().setLevel('DEBUG')
     gpus = tf.config.list_physical_devices('GPU')
     if gpus:
@@ -99,7 +106,7 @@ def gpu_setup():
             tf.config.experimental.set_memory_growth(gpus[0], True)
             tf.config.set_logical_device_configuration(
                 gpus[0],
-                [tf.config.LogicalDeviceConfiguration(memory_limit=1024)])
+                [tf.config.LogicalDeviceConfiguration(memory_limit=4096)])
             logical_gpus = tf.config.list_logical_devices('GPU')
             print(len(gpus), "Physical GPUs,", len(logical_gpus), "Logical GPUs")
         except RuntimeError as e:
