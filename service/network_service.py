@@ -5,10 +5,16 @@ from sklearn.model_selection import train_test_split
 import util.constants as constants
 
 
+# used for prediction of an image against the model
+# will return the array of predictions for all of th 52 classes
+# and a tuple with the id of the card and the max value from the prediction array
 def predict(model, image):
     return model.predict(image), (np.where(model.predict(image)>0.9)[1][0], model.predict(image).max())
 
 
+# starts the training of the neural network
+# if the retrain constant is true the network will train,
+# if not, it will load the weights from the file specified in constants
 def start_training(image_data, total_cards_number):
     model = create_ResNet50V2(constants.training_image_height, constants.training_image_width)
 
@@ -23,6 +29,8 @@ def start_training(image_data, total_cards_number):
     return model
 
 
+# trains the network using the proposed model from the parameters
+# also saved the weights file after the training is done
 def train_model(image_data, total_cards_number, model):
     train_data, train_labels = get_data(image_data, total_cards_number)
     X_train, X_test, Y_train, Y_test = train_test_split(train_data, train_labels, test_size=0.2, random_state=0)
@@ -47,6 +55,8 @@ def train_model(image_data, total_cards_number, model):
     return model
 
 
+# formats the data into a usable array for training
+# it will reshape and create a new np array for the network
 def get_data(labels, total_cards_number):
     classes = np.empty((total_cards_number, 1), dtype='float16')
     data = np.empty((total_cards_number, constants.training_image_height, constants.training_image_width), dtype='float32')
@@ -116,7 +126,7 @@ def gpu_setup():
     tf.get_logger().setLevel('DEBUG')
     gpus = tf.config.list_physical_devices('GPU')
     if gpus:
-        # Restrict TensorFlow to only allocate 1GB of memory on the first GPU
+        # Restrict TensorFlow to only allocate 6GB of memory on the first GPU
         try:
             # tf.config.allow_growth = True
             # tf.config.experimental.set_memory_growth(gpus[0], True)
@@ -130,6 +140,8 @@ def gpu_setup():
             print(e)
 
 
+# these 2 methods are used for testing the cpu and gpu implementation
+# it was also proved that a first run is required for better performance later
 def cpu():
   with tf.device('/cpu:0'):
     random_image_cpu = tf.random.normal((100, 100, 100, 3))
