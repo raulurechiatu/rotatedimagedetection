@@ -10,6 +10,8 @@ from PIL import Image
 segmentation_path = "resources/images/output/segmentation/"
 
 
+# A method used to load the images
+# the user can change the actual library used to load images, currently the one used is: cv2
 def load_images(folder_path, images_to_load=-1, offset=0):
     card_images = []
     final_path = Path(__file__).parent / folder_path
@@ -59,6 +61,7 @@ def load_image_pil(path):
     return list(original.getdata())
 
 
+# ~1000 x ~750
 def load_image_cv(path):
     path = path[3:]
     # return cv2.imread(path, 0)
@@ -66,6 +69,7 @@ def load_image_cv(path):
     return img / 255
 
 
+# displays an image using matplotlib
 def display_image(image, title=""):
     f, axarr = plt.subplots(1, 1)
     # Display the image

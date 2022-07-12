@@ -3,9 +3,14 @@ import yaml
 from yaml.loader import SafeLoader
 from pathlib import Path
 import os
+from scipy.ndimage import rotate
 import util.constants as constants
+import numpy as np
+from objects.CardData import CardData
 
 
+# Method used to load the raw data from the yaml files
+# this data will be parsed later
 def load_yaml_data(folder_path, files_to_load=-1):
     yaml_data = []
     final_path = Path(__file__).parent / folder_path
@@ -31,6 +36,13 @@ def load_yaml_data(folder_path, files_to_load=-1):
     return yaml_data
 
 
+# A method to parse the yaml file and return an object array
+# this will split each image into arrays of rectangles
+# if an image has 2 cards, with 4 corners showing the result of this method will be an array of 4 objects
+# each containing cx, cy, width, height, angle and card_id
+# after all the information was loaded a rectangle is obtained from the corners using the previous information
+# this rectangle is resized to the parameters specified in the constants file in order to be usable by the cnn
+# this will apply the previous logic on all the labels and images loaded
 def parse_yaml_data(yaml_array, imgs):
     data = []
     total_cards = 0
@@ -42,16 +54,26 @@ def parse_yaml_data(yaml_array, imgs):
             y = yaml_data[current_property+1]
             width = yaml_data[current_property+2]
             height = yaml_data[current_property+3]
+            angle = yaml_data[current_property + 4]
 
-            corner_rect = imgs[yaml_entry][x:x + height, y:y + width]
+            # this offset is needed because the rotation of the image yielded partially cropped images
+            size_offset = 5
+            half_height = int(height/2) + size_offset
+            half_width = int(width/2) + size_offset
+
+            corner_rect = imgs[yaml_entry][y - half_height:y + half_height, x - half_width:x + half_width]
+
+            # If the corner failed to be obtained we just skip it
             if len(corner_rect) == 0:
                 continue
 
-            corner_rect = cv2.resize(corner_rect, (constants.training_image_width, constants.training_image_height), interpolation=cv2.INTER_AREA)
+            # rotation and resize of the image
+            corner_rect = rotate(corner_rect, angle-90)
+            corner_rect = resize(corner_rect)
 
             card_data = CardData(x, y,
                                  width, height,
-                                 yaml_data[current_property + 4],  # angle
+                                 angle,
                                  yaml_data[current_property + 5],  # card_id
                                  corner_rect)
             current_data.append(card_data)
@@ -60,16 +82,16 @@ def parse_yaml_data(yaml_array, imgs):
     return data, total_cards
 
 
-class CardData:
-    def __init__(self, cx, cy, width, height, angle, card_id, rectangle):
-        self.cx = cx
-        self.cy = cy
-        self.width = width
-        self.height = height
-        self.angle = angle
-        self.card_id = card_id
-        self.rectangle = rectangle
+# A resize method used to generalize the size of an image
+# needed because the neural network was trained on a specific size
+def resize(img):
+    return cv2.resize(img, (constants.training_image_width, constants.training_image_height),
+                                     interpolation=cv2.INTER_AREA)
 
-    def __str__(self):
-        print("cx: ", self.cx, " cy: ", self.cy, " width: ", self.width, " height: ", self.height,
-              " angle: ", self.angle, " card_id: ", self.card_id)
+
+# A reshape method used to generalize the shape needed for the network
+def reshape(img):
+    data = np.empty((1, constants.training_image_height, constants.training_image_width),
+                    dtype='float32')
+    data[0] = img
+    return np.reshape(data, (1, constants.training_image_height, constants.training_image_width, 1))
