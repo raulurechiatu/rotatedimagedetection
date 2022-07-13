@@ -62,11 +62,13 @@ def load_image_pil(path):
 
 
 # ~1000 x ~750
-def load_image_cv(path):
+def load_image_cv(path, is_float32=True):
     path = path[3:]
     # return cv2.imread(path, 0)
-    img = cv2.imread(path, 0).astype('float32')
-    return img / 255
+    if is_float32:
+        return cv2.imread(path, 0).astype('float32') / 255
+    else:
+        return cv2.imread(path)
 
 
 # displays an image using matplotlib

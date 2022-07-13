@@ -1,6 +1,8 @@
 import numpy as np
 import tensorflow as tf
 from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import MultiLabelBinarizer
+import service.image_loader as il
 
 import util.constants as constants
 
@@ -9,17 +11,20 @@ import util.constants as constants
 # will return the array of predictions for all of th 52 classes
 # and a tuple with the id of the card and the max value from the prediction array
 def predict(model, image):
-    return model.predict(image), (np.where(model.predict(image)>0.9)[1][0], model.predict(image).max())
+    prediction = model.predict(image)
+    max_value = prediction.max()
+    max_value_id = np.argmax(prediction)
+    return prediction, (max_value_id, max_value)
 
 
 # starts the training of the neural network
 # if the retrain constant is true the network will train,
 # if not, it will load the weights from the file specified in constants
-def start_training(image_data, total_cards_number):
-    model = create_ResNet50V2(constants.training_image_height, constants.training_image_width)
+def start_training(image_data, labels, total_cards_number):
+    model = create_inception(constants.training_image_height, constants.training_image_width)
 
     if constants.retrain:
-       model = train_model(image_data, total_cards_number, model)
+       model = train_model(image_data, labels, total_cards_number, model)
     else:
         model.load_weights("resources/models/" + constants.weights_to_load)
         model.compile(optimizer=tf.keras.optimizers.Adam(),
@@ -31,8 +36,15 @@ def start_training(image_data, total_cards_number):
 
 # trains the network using the proposed model from the parameters
 # also saved the weights file after the training is done
-def train_model(image_data, total_cards_number, model):
-    train_data, train_labels = get_data(image_data, total_cards_number)
+def train_model(image_data, labels, total_cards_number, model):
+    # train_data, train_labels = get_data(image_data, total_cards_number)
+    train_data = np.reshape(image_data, (total_cards_number, constants.training_image_height, constants.training_image_width, 1))
+
+    one_hot = MultiLabelBinarizer()
+    train_labels = one_hot.fit_transform(labels)
+    # print(one_hot.fit_transform(labels))
+    # print(one_hot.classes_)
+
     X_train, X_test, Y_train, Y_test = train_test_split(train_data, train_labels, test_size=0.2, random_state=0)
     X_train = tf.convert_to_tensor(X_train, dtype=tf.float32)
     X_test = tf.convert_to_tensor(X_test, dtype=tf.float32)
@@ -41,7 +53,7 @@ def train_model(image_data, total_cards_number, model):
     # X_train, X_test = X_train / 255.0, X_test / 255.0
 
     model.compile(optimizer=tf.keras.optimizers.Adam(),
-                  loss=tf.keras.losses.SparseCategoricalCrossentropy(),
+                  loss=tf.keras.losses.CategoricalCrossentropy(),
                   metrics=['accuracy'])
 
     history = model.fit(X_train, Y_train, epochs=10, batch_size=8,
@@ -119,6 +131,36 @@ def create_ResNet50V2(width, height):
     )
 
 
+# Keras ResNet50V2 model
+def create_Vgg16(width, height):
+    # inputs = Input(shape=(width, height, 1))
+
+    return tf.keras.applications.vgg16.VGG16(
+        include_top=True,
+        weights=None,
+        # input_tensor=inputs,
+        input_shape=(width, height, 1),
+        pooling=None,
+        classes=constants.number_of_classes,
+        classifier_activation="softmax",
+    )
+
+
+# Keras ResNet50V2 model
+def create_inception(width, height):
+    # inputs = Input(shape=(width, height, 1))
+
+    return tf.keras.applications.inception_v3.InceptionV3(
+        include_top=True,
+        weights=None,
+        # input_tensor=inputs,
+        input_shape=(width, height, 1),
+        pooling=None,
+        classes=constants.number_of_classes,
+        classifier_activation="softmax",
+    )
+
+
 def gpu_setup():
     # This line stops the usage of GPU in tensorflow, needed because the network would not start on GPU
     # tf.config.set_visible_devices([], 'GPU')
@@ -132,7 +174,7 @@ def gpu_setup():
             # tf.config.experimental.set_memory_growth(gpus[0], True)
             tf.config.set_logical_device_configuration(
                 gpus[0],
-                [tf.config.LogicalDeviceConfiguration(memory_limit=6000)])
+                [tf.config.LogicalDeviceConfiguration(memory_limit=8000)])
             logical_gpus = tf.config.list_logical_devices('GPU')
             print(len(gpus), "Physical GPUs,", len(logical_gpus), "Logical GPUs")
         except RuntimeError as e:

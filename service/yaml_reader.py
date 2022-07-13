@@ -7,6 +7,7 @@ from scipy.ndimage import rotate
 import util.constants as constants
 import numpy as np
 from objects.CardData import CardData
+import service.image_processor as ip
 
 
 # Method used to load the raw data from the yaml files
@@ -45,10 +46,12 @@ def load_yaml_data(folder_path, files_to_load=-1):
 # this will apply the previous logic on all the labels and images loaded
 def parse_yaml_data(yaml_array, imgs):
     data = []
+    labels = []
     total_cards = 0
     for yaml_entry in range(0, len(yaml_array)):
         yaml_data = yaml_array[yaml_entry]['BBmat']['data']
         current_data = []
+        current_labels = []
         for current_property in range(0, len(yaml_data), 6):
             x = yaml_data[current_property]
             y = yaml_data[current_property+1]
@@ -69,29 +72,33 @@ def parse_yaml_data(yaml_array, imgs):
 
             # rotation and resize of the image
             corner_rect = rotate(corner_rect, angle-90)
-            corner_rect = resize(corner_rect)
+            corner_rect = ip.resize(corner_rect)
 
+            card_id = yaml_data[current_property + 5]
             card_data = CardData(x, y,
                                  width, height,
                                  angle,
-                                 yaml_data[current_property + 5],  # card_id
+                                 card_id,
                                  corner_rect)
             current_data.append(card_data)
+
+            if card_id not in current_labels:
+                current_labels.append(card_id)
+
+        imgs[yaml_entry] = ip.resize(imgs[yaml_entry])
         data.append(current_data)
+        labels.append(current_labels)
         total_cards += len(current_data)
-    return data, total_cards
+    return data, labels, total_cards
 
 
-# A resize method used to generalize the size of an image
-# needed because the neural network was trained on a specific size
-def resize(img):
-    return cv2.resize(img, (constants.training_image_width, constants.training_image_height),
-                                     interpolation=cv2.INTER_AREA)
-
-
-# A reshape method used to generalize the shape needed for the network
-def reshape(img):
-    data = np.empty((1, constants.training_image_height, constants.training_image_width),
-                    dtype='float32')
-    data[0] = img
-    return np.reshape(data, (1, constants.training_image_height, constants.training_image_width, 1))
+def parse_yaml_data_lite(yaml_array, imgs):
+    labels = []
+    for yaml_entry in range(0, len(yaml_array)):
+        current_labels = []
+        yaml_data = yaml_array[yaml_entry]['BBmat']['data']
+        for current_property in range(0, len(yaml_data), 12):
+            current_labels.append(yaml_data[current_property + 5])
+        labels.append(current_labels)
+        imgs[yaml_entry] = ip.resize(imgs[yaml_entry])
+    return imgs, labels
