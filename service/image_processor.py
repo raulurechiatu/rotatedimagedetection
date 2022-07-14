@@ -1,70 +1,204 @@
 import cv2
 import numpy as np
-import pytesseract
 import service.image_loader as il
-import matplotlib.pyplot as plt
+import service.network_service as ns
 import util.constants as constants
 from scipy.ndimage import rotate
+import util.app_helper as ah
 
 assets_parent_path = "../resources/images/ssip_20k_cards/assets/"
 card_folder_path = "../resources/images/ssip_20k_cards/img/"
 
+find_corners_from_side = 30
+corner_crop_size = 40
 
-def segment_image(img):
-    # cv2.imshow('image', img)
-    # cv2.waitKey()
-    # contour_image(img)
-    # asset_images = get_assets()
-    h, w = 80, 50
-    w_offset = 10
-    same_rectangle_offset = 50
-    sizes = [20, 25, 30, 40]
-    angles = [0, 90, 180, 270]
+
+def segment_image(img, model):
+    img = cv2.threshold(img, 160, 255, cv2.THRESH_TOZERO)[1]
+    contours, hierarchy = cv2.findContours(img, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+
+    # draw rectangles
+    for cnt in contours:
+        area = cv2.contourArea(cnt)
+        if area < 4000:
+            continue
+        # rect = cv2.minAreaRect(cnt)
+        # box = cv2.boxPoints(rect)
+        # box = np.int0(box)
+        cv2.drawContours(img, cnt, -1, (255, 0, 0), 3)
+
+        crop, crop_point = get_cropped_card(img, cnt)
+        corner_points = get_corners(crop)
+        corners = get_corner_cropped(img, crop, crop_point, corner_points, model)
+
+    return None, img
+
+
+def get_cropped_card(img, cnt):
+    space_from_margin = 5
+    mask = np.zeros_like(img)
+    cv2.drawContours(mask, cnt, -1, (255, 0, 0), 3)
+    out = np.zeros_like(img)  # Extract out the object and place into output image
+    out[mask == 255] = img[mask == 255]
+    (y, x) = np.where(mask == 255)
+    (topy, topx) = (np.min(y), np.min(x))
+    (bottomy, bottomx) = (np.max(y), np.max(x))
+    out = img[topy - space_from_margin:bottomy + space_from_margin,
+          topx - space_from_margin:bottomx + space_from_margin]
+    return out, (topx, topy)
+
+
+def get_corners(crop):
+    if len(crop) == 0 or len(crop[0]) == 0:
+        return []
+
+    canny = cv2.Canny(crop, 150, 255)
+
+    corners = cv2.goodFeaturesToTrack(canny, 6, 0.01, 50)
+    centers = []
+    if len(corners) < 1:
+        return centers
+
+    for corner in corners:
+        x, y = corner.ravel()
+        if find_corners_from_side < x < crop.shape[0] - find_corners_from_side and \
+                find_corners_from_side < y < crop.shape[1] - find_corners_from_side:
+            continue
+        centers.append((y, x))
+        cv2.circle(canny, (int(x), int(y)), 10, (255, 0, 0), -1)
+    # cv2.imshow("Corner Points", crop)
+    cv2.imshow("Corner Points", canny)
+    cv2.waitKey(40)
+    return centers
+
+
+def get_corner_cropped(img, crop, crop_point, corner_points, model):
+
+    corners = []
+    max_angle_prediction = 0
+    max_angle_class = 0
+    max_angle = -1
+    for pt in corner_points:
+        x1 = 0 if pt[0] - corner_crop_size < 0 else int(pt[0] - corner_crop_size)
+        y1 = crop.shape[0] if pt[0] + corner_crop_size > crop.shape[0] else int(pt[0] + corner_crop_size)
+
+        x2 = 0 if pt[1] - corner_crop_size < 0 else int(pt[1] - corner_crop_size)
+        y2 = crop.shape[1] if pt[1] + corner_crop_size > crop.shape[1] else int(pt[1] + corner_crop_size)
+
+        corner = crop[x1:y1, x2:y2]
+        # il.display_image(corner)
+        # cv2.imshow("Corners Img", corner)
+        corners.append(corner)
+        # cv2.imshow("Fed Image", corner)
+        # cv2.waitKey(40)
+
+        # for angle in [0]:[0, 45, 90, 135, 180, 225, 270]
+        for angle in range(0, 360, 10):
+            validation_image = reshape(resize(rotate(corner, angle)))/255
+            cv2.imshow("Rotated Image", validation_image[0])
+            cv2.waitKey(10)
+            prediction_vector, (solution_id, solution_value) = ns.predict(model, validation_image)
+            if solution_value > max_angle_prediction:
+                max_angle_prediction = solution_value
+                max_angle_class = solution_id
+                max_angle = angle
+
+    if max_angle_prediction > 0:
+        print("Predicted solution is:", ah.get_card_from_id(max_angle_class),
+              "(", max_angle_class, max_angle_prediction, ") - ", max_angle)
+
+        cv2.putText(img,
+                    str("%s (%.2f)" % (ah.get_card_from_id(max_angle_class), max_angle_prediction)),
+                    (int(crop_point[0]), int(crop_point[1]-10)), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 0), 1)
+    else:
+        print("Solution not found, closest card was:", ah.get_card_from_id(max_angle_class),
+              "(", max_angle_prediction, ") - ", max_angle)
+
+    return corners
+
+
+def segment_image_2(img, model):
+    img = cv2.threshold(img, 170, 255, cv2.THRESH_TOZERO)[1]
+    # il.display_image(img)
+
+    rectangle_size = 20
+    same_rectangle_offset = 40
+    kernel_sizes = [10, 30]
+    sizes = [20, 30]
+    # angles = [0, 90, 180, 270]
+    angles = [0]
 
     locs = get_template_locs(img, sizes, angles)
 
     current_pt0 = []
     current_pt1 = []
+    results = []
+    solution_ids = []
+
     for loc_id in range(0, len(locs)):
         for pt in zip(*locs[loc_id][::-1]):
-            # rect = cv2.rectangle(img, pt, (pt[0] + w, pt[1] + h), (0, 0, 255), 2)
-            # tmp_img = rotate(img, loc_id*90)
-
             if check_if_point_exists(current_pt0, current_pt1, pt, same_rectangle_offset):
                 continue
 
             current_pt0.append(pt[0])
             current_pt1.append(pt[1])
-            # rect = cv2.rectangle(img, pt, (pt[0] + w, pt[1] + h), (0, 0, 255), 2)
+            # plt.imshow(cv2.cvtColor(img[pt[1] - h:pt[1] + h, pt[0] - h:pt[0] + h], cv2.COLOR_BGR2RGB))
+            # plt.show()
 
-            # if the rectangle was found horizontally or vertically, adjust the cropping size
-            if loc_id % len(angles) == 0:
-                cropped = img[pt[1] - int(h / 2):pt[1] + int(h / 2), pt[0] - w_offset:pt[0] + w - w_offset]
-            elif loc_id % len(angles) == 1:
-                cropped = img[pt[1] - w_offset:pt[1] + w - w_offset, pt[0] - int(h / 2):pt[0] + int(h / 2)]
-            elif loc_id % len(angles) == 2:
-                cropped = img[pt[1]:pt[1] + h, pt[0] - w_offset:pt[0] + w - w_offset]
-            elif loc_id % len(angles) == 3:
-                cropped = img[pt[1] - w_offset:pt[1] + w - w_offset, pt[0]:pt[0] + h]
+            max_angle_prediction = 0
+            max_angle_class = 0
+            max_angle_pt = []
 
-            plt.imshow(cv2.cvtColor(cropped, cv2.COLOR_BGR2RGB))
-            plt.show()
-            cropped = rotate(cropped, loc_id % len(angles) * -90)
-            plt.imshow(cv2.cvtColor(cropped, cv2.COLOR_BGR2RGB))
-            plt.show()
+            for kernel_size in kernel_sizes:
+                result = img[pt[1] - kernel_size:pt[1] + kernel_size, pt[0] - kernel_size:pt[0] + kernel_size] / 255
+                results.append(result)
+                il.display_image(result)
+                for angle in angles:
+                    if len(result) == 0 or len(result[0]) == 0:
+                        continue
 
-    plt.imshow(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
-    plt.show()
+                    validation_image = reshape(resize(rotate(result, angle)))
+                    prediction_vector, (solution_id, solution_value) = ns.predict(model, validation_image)
+                    if solution_value > max_angle_prediction:
+                        max_angle_prediction = solution_value
+                        max_angle_class = solution_id
+                        max_angle_pt = pt
+
+            if max_angle_prediction < 0.7:
+                continue
+
+            rect = cv2.rectangle(img,
+                                 (max_angle_pt[0] - rectangle_size, max_angle_pt[1] - rectangle_size),
+                                 (max_angle_pt[0] + rectangle_size, max_angle_pt[1] + rectangle_size),
+                                 (255, 0, 0),
+                                 2)
+            cv2.putText(img,
+                        str("%s (%d-%f)" % (ah.get_card_from_id(max_angle_class), max_angle_class, round(max_angle_prediction, 2))),
+                        (pt[0] - kernel_size, pt[1] - rectangle_size - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (255, 255, 0), 2)
+
+            # if solution_id not in solution_ids:
+            solution_ids.append((ah.get_card_from_id(max_angle_class), max_angle_prediction))
+            print("Predicted solution is:", ah.get_card_from_id(max_angle_class), " with confidence level of ", max_angle_prediction)
+
+            # cropped = rotate(cropped, loc_id % len(angles) * -90)
+
+    print("Cards identified in the picture are: ", solution_ids)
+    # plt.imshow(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
+    # plt.show()
+
+    return results, img
 
 
 def get_template_locs(img, sizes, angles):
-    threshold = 0.7
-    locs = []
+    threshold = 0.5
+    locs = []  # create an empty tuple
 
     templates = ["4_of_clubs.png", "4_of_spades.png", "4_of_hearts.png", "4_of_diamonds.png"]
     for template_card in templates:
         template = il.load_image_cv(assets_parent_path + template_card, is_float32=False)
+        template = cv2.threshold(template, 150, 255, cv2.THRESH_TOZERO)[1]
         tmp = template[90:175, 10:95]
+        # il.display_image(tmp)
 
         for size in sizes:
             tmp = resize(tmp, width=size, height=size)
@@ -73,8 +207,11 @@ def get_template_locs(img, sizes, angles):
                 if angle == 0:
                     res = cv2.matchTemplate(img, tmp, cv2.TM_CCOEFF_NORMED)
                 else:
-                    res = cv2.matchTemplate(img, rotate(tmp, 90), cv2.TM_CCOEFF_NORMED)
-                locs.append(np.where(res >= threshold))
+                    res = cv2.matchTemplate(img, rotate(tmp, angle), cv2.TM_CCOEFF_NORMED)
+                pt = np.where(res >= threshold)
+
+                if pt[0].size != 0:
+                    locs.append(pt)
 
     return locs
 
@@ -85,45 +222,11 @@ def check_if_point_exists(current_pt0, current_pt1, pt, same_rectangle_offset):
         if current_pt0[current_pt_id] - same_rectangle_offset < pt[0] < current_pt0[
             current_pt_id] + same_rectangle_offset and \
                 current_pt1[current_pt_id] - same_rectangle_offset < pt[1] < current_pt1[
-                current_pt_id] + same_rectangle_offset:
+            current_pt_id] + same_rectangle_offset \
+                :
+            # and current_threshold < thresholds[current_pt_id]\
             return True
     return False
-
-
-def get_assets():
-    asset_images, asset_names = il.load_images(assets_parent_path)
-    for img_number in range(0, len(asset_images)):
-        # [0:200, 0:100] - the whole rectangle of sign and number
-        # [90:175, 10:95] - just the sign of the card
-        # [0:90, 0:100] - just the number of the card
-        asset_images[img_number] = asset_images[img_number][0:200, 0:100]
-        cv2.imshow('image', asset_images[img_number])
-        cv2.waitKey()
-    return asset_images
-
-
-def contour_image(img):
-    gray_img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    thresh_img = cv2.threshold(gray_img, 127, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)[1]
-
-    cnts = cv2.findContours(thresh_img, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    cnts = cnts[0] if len(cnts) == 2 else cnts[1]
-    bigger_cnts = []
-    for cnt in cnts:
-        approx = cv2.contourArea(cnt)
-        if approx > 10000:
-            bigger_cnts.append(cnt)
-            # x, y, w, h = cv2.boundingRect(cnt)
-            # cv2.rectangle(gray_img,
-            #               (x, y), (x + w, y + h),
-            #               (0, 255, 0),
-            #               2)
-
-    cv2.drawContours(thresh_img, bigger_cnts, -1, (0, 255, 0), 3)
-    cv2.imshow('Contours', thresh_img)
-    cv2.waitKey(0)
-    d = pytesseract.image_to_string(thresh_img, config="--psm 10")
-    print(d)
 
 
 def grayscale(img):

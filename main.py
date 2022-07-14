@@ -1,8 +1,12 @@
+import cv2
+
 import service.image_loader as il
 import service.yaml_reader as yr
 import service.network_service as ns
 from util.constants import images_to_load
 import service.image_processor as ip
+import util.constants as constants
+import util.app_helper as ah
 
 
 # Path for the initial image to start the algorithm on
@@ -16,32 +20,61 @@ card_folder_path = "../resources/images/ssip_20k_cards/img/"
 # will predict the solution for an image
 # will reshape and resize the actual image to be suitable for prediction
 def predict_image(path):
-    model = ns.start_training(None, None)
-    validation_image = ip.reshape(ip.resize(il.load_image_cv(path)))
+    model = ns.start_training(None, None, None)
+    img = ip.resize(il.load_image_cv(path))
+    thresh = cv2.threshold(img, .6, 1, cv2.THRESH_TOZERO)[1]
+    validation_image = ip.reshape(thresh)
     prediction_vector, (solution_id, solution_value) = ns.predict(model, validation_image)
-    print("Predicted solution is:", solution_id, " with confidence level of ", solution_value)
+    print("Predicted solution is:", ah.get_card_from_id(solution_id), " with confidence level of ", solution_value)
 
 
 def load_train():
     ns.gpu_setup()
     ns.gpu()
-    card_images, card_names = il.load_images(card_folder_path, images_to_load)
-    # image_data, labels, total_cards = yr.parse_yaml_data(yr.load_yaml_data(yaml_data_path, images_to_load), card_images)
-    image_data, labels = yr.parse_yaml_data_lite(yr.load_yaml_data(yaml_data_path, images_to_load), card_images)
+    image_data, total_cards = il.load_images_and_yaml(card_folder_path, yaml_data_path, images_to_load, constants.offset)
+
+    # card_images, card_names = il.load_images(card_folder_path, images_to_load, constants.offset)
+    # image_data, total_cards = yr.parse_yaml_data(yr.load_yaml_data(yaml_data_path, images_to_load, constants.offset), card_images)
+
+    # image_data, labels = yr.parse_yaml_data_lite(yr.load_yaml_data(yaml_data_path, images_to_load), card_images)
 
     # Start the training
-    # model = ns.start_training(image_data, total_cards)
-    model = ns.start_training(card_images, labels, len(card_images))
+    model = ns.start_training(image_data, None, total_cards)
+    # model = ns.start_training(card_images, labels, len(card_images))
+
+
+def video_process():
+    # cap = cv2.VideoCapture('../resources/images/ssip_20k_cards/sequence_for_test.mp4')
+    cap = cv2.VideoCapture(0)
+    model = ns.start_training(None, None, None)
+    # model = None
+    while cap.isOpened():
+        ret, frame = cap.read()
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        segmentation_results, img = ip.segment_image(gray, model)
+        cv2.imshow("Gray", gray)
+        cv2.imshow("Thresholded", img)
+        cv2.imshow("Original", frame)
+        if cv2.waitKey(1000) & 0xFF == ord('q'):
+            break
+
+    cap.release()
+    cv2.destroyAllWindows()
 
 
 if __name__ == '__main__':
     # Segment
     # ip.segment_image(il.load_image_cv(card_folder_path + "CARD_00000.jpg", is_float32=False))
     # ip.segment_image(il.load_image_cv(card_folder_path + "CARD_00007.jpg", is_float32=False))
-    ip.segment_image(il.load_image_cv(card_folder_path + "CARD_00016.jpg", is_float32=False))
+    # ip.segment_image(il.load_image_cv(card_folder_path + "CARD_00016.jpg", is_float32=False))
+    # ip.segment_image(il.load_image_cv("../resources/images/validate/validate3.png", is_float32=False))
+
+    # Process the video
+    video_process()
 
     # Prediction
-    # predict_image("../resources/images/validate/validate3.png")
+    # predict_image("../resources/images/validate/validate1.png")
+    # predict_image("../resources/images/validate/validate4.png")
 
     # il.display_image(image_data[0][0].rectangle)
 

@@ -1,5 +1,6 @@
 import numpy as np
 import tensorflow as tf
+from keras.callbacks import EarlyStopping
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import MultiLabelBinarizer
 import service.image_loader as il
@@ -24,12 +25,9 @@ def start_training(image_data, labels, total_cards_number):
     model = create_inception(constants.training_image_height, constants.training_image_width)
 
     if constants.retrain:
-       model = train_model(image_data, labels, total_cards_number, model)
+        model = train_model(image_data, labels, total_cards_number, model)
     else:
         model.load_weights("resources/models/" + constants.weights_to_load)
-        model.compile(optimizer=tf.keras.optimizers.Adam(),
-                      loss=tf.keras.losses.SparseCategoricalCrossentropy(),
-                      metrics=['accuracy'])
 
     return model
 
@@ -37,11 +35,11 @@ def start_training(image_data, labels, total_cards_number):
 # trains the network using the proposed model from the parameters
 # also saved the weights file after the training is done
 def train_model(image_data, labels, total_cards_number, model):
-    # train_data, train_labels = get_data(image_data, total_cards_number)
-    train_data = np.reshape(image_data, (total_cards_number, constants.training_image_height, constants.training_image_width, 1))
+    train_data, train_labels = get_data(image_data, total_cards_number)
+    # train_data = np.reshape(image_data, (total_cards_number, constants.training_image_height, constants.training_image_width, 1))
 
-    one_hot = MultiLabelBinarizer()
-    train_labels = one_hot.fit_transform(labels)
+    # one_hot = MultiLabelBinarizer()
+    # train_labels = one_hot.fit_transform(labels)
     # print(one_hot.fit_transform(labels))
     # print(one_hot.classes_)
 
@@ -49,15 +47,19 @@ def train_model(image_data, labels, total_cards_number, model):
     X_train = tf.convert_to_tensor(X_train, dtype=tf.float32)
     X_test = tf.convert_to_tensor(X_test, dtype=tf.float32)
 
-    # (X_train, Y_train), (X_test, Y_test) = tf.keras.datasets.cifar10.load_data()
-    # X_train, X_test = X_train / 255.0, X_test / 255.0
+    if constants.load_weights:
+        model.load_weights("resources/models/" + constants.weights_to_load)
+
+    es = EarlyStopping(monitor='val_loss', patience=2, verbose=1)
 
     model.compile(optimizer=tf.keras.optimizers.Adam(),
-                  loss=tf.keras.losses.CategoricalCrossentropy(),
+                  loss=tf.keras.losses.SparseCategoricalCrossentropy(),
                   metrics=['accuracy'])
 
-    history = model.fit(X_train, Y_train, epochs=10, batch_size=8,
-                        validation_data=(X_test, Y_test))
+    model.summary()
+
+    history = model.fit(X_train, Y_train, epochs=4, batch_size=32,
+                        validation_data=(X_test, Y_test), callbacks=[es])
 
     test_loss, test_acc = model.evaluate(X_test, Y_test, verbose=1)
     print("Loss: ", test_loss, " Acc: ", test_acc)
