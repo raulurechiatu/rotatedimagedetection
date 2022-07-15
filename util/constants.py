@@ -6,7 +6,8 @@ training_image_width = 80
 training_image_height = 80
 number_of_classes = 52
 
-weights_file_name = 'resnet_v2.h5'
+# best one yet inception_v4.h5
+weights_file_name = 'inception_v8.h5'
 weights_to_load = 'inception_v4.h5'
 # weights_to_load = 'model2.h5'
 

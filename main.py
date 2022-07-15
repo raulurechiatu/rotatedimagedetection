@@ -13,7 +13,6 @@ import util.app_helper as ah
 # This image is for example a picture took with a personal telescope or obtain via the internet to be analyzed
 yaml_data_path = "../resources/images/ssip_20k_cards/gt/"
 assets_image_name = '2_of_clubs'
-
 card_folder_path = "../resources/images/ssip_20k_cards/img/"
 
 
@@ -33,14 +32,8 @@ def load_train():
     ns.gpu()
     image_data, total_cards = il.load_images_and_yaml(card_folder_path, yaml_data_path, images_to_load, constants.offset)
 
-    # card_images, card_names = il.load_images(card_folder_path, images_to_load, constants.offset)
-    # image_data, total_cards = yr.parse_yaml_data(yr.load_yaml_data(yaml_data_path, images_to_load, constants.offset), card_images)
-
-    # image_data, labels = yr.parse_yaml_data_lite(yr.load_yaml_data(yaml_data_path, images_to_load), card_images)
-
     # Start the training
     model = ns.start_training(image_data, None, total_cards)
-    # model = ns.start_training(card_images, labels, len(card_images))
 
 
 def video_process():
@@ -55,7 +48,7 @@ def video_process():
         cv2.imshow("Gray", gray)
         cv2.imshow("Thresholded", img)
         cv2.imshow("Original", frame)
-        if cv2.waitKey(1000) & 0xFF == ord('q'):
+        if cv2.waitKey(100) & 0xFF == ord('q'):
             break
 
     cap.release()
@@ -70,11 +63,11 @@ if __name__ == '__main__':
     # ip.segment_image(il.load_image_cv("../resources/images/validate/validate3.png", is_float32=False))
 
     # Process the video
-    video_process()
+    # video_process()
 
     # Prediction
-    # predict_image("../resources/images/validate/validate1.png")
-    # predict_image("../resources/images/validate/validate4.png")
+    predict_image("../resources/images/validate/validate1.png")
+    predict_image("../resources/images/validate/validate4.png")
 
     # il.display_image(image_data[0][0].rectangle)
 

@@ -5,12 +5,11 @@ from pathlib import Path
 import os
 from scipy.ndimage import rotate
 import util.constants as constants
-import numpy as np
 from objects.CardData import CardData
 import service.image_processor as ip
-import service.image_loader as il
 
 
+# DEPRECATED
 # Method used to load the raw data from the yaml files
 # this data will be parsed later
 def load_yaml_data(folder_path, files_to_load=-1, offset=0):
@@ -38,6 +37,7 @@ def load_yaml_data(folder_path, files_to_load=-1, offset=0):
     return yaml_data
 
 
+# DEPRECATED
 # A method to parse the yaml file and return an object array
 # this will split each image into arrays of rectangles
 # if an image has 2 cards, with 4 corners showing the result of this method will be an array of 4 objects
@@ -60,11 +60,11 @@ def parse_yaml_data(yaml_array, imgs):
 
             # this offset is needed because the rotation of the image yielded partially cropped images
             size_offset = 10
-            # half_height = int(height/2) + size_offset
-            # half_width = int(height/2) + size_offset
             half_height = int(constants.training_image_height/2) + size_offset
             half_width = int(constants.training_image_width/2) + size_offset
 
+            # even though the yaml files contain the exact width and height, given the real life examples
+            # it's easier for us to use squares instead of rectangles, given the rotation a real image can find itself
             corner_rect = imgs[yaml_entry][y - half_height:y + half_height, x - half_width:x + half_width]
 
             # If the corner failed to be obtained we just skip it
@@ -127,7 +127,7 @@ def parse_yaml_entry(yaml_entry, img):
         corner_rect = ip.resize(corner_rect)
         corner_rect = cv2.threshold(corner_rect, .6, 1, cv2.THRESH_TOZERO)[1]
 
-        il.display_image(corner_rect)
+        # il.display_image(corner_rect)
 
         card_id = yaml_data[current_property + 5]
         card_data = CardData(x, y,
@@ -141,6 +141,7 @@ def parse_yaml_entry(yaml_entry, img):
     return data, total_cards
 
 
+# DEPRECATED
 def parse_yaml_data_lite(yaml_array, imgs):
     labels = []
     for yaml_entry in range(0, len(yaml_array)):
