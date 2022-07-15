@@ -13,3 +13,5 @@ weights_to_load = 'inception_v4.h5'
 
 retrain = False
 load_weights = False
+
+play_game = True

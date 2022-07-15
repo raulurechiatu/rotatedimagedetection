@@ -4,6 +4,7 @@ import service.network_service as ns
 import util.constants as constants
 from scipy.ndimage import rotate
 import util.app_helper as ah
+import util.game as game
 
 assets_parent_path = "../resources/images/ssip_20k_cards/assets/"
 card_folder_path = "../resources/images/ssip_20k_cards/img/"
@@ -16,11 +17,15 @@ corner_crop_size = 50
 # in this we will find multiple steps applied to the original image like thresholding, finding contours,
 # extracting corners, rotating, resizing, reshaping and prediction, all working together on the same image
 def segment_image(img, model):
+    if constants.play_game:
+        game.reset_score()
+
     img = cv2.threshold(img, 170, 255, cv2.THRESH_TOZERO)[1]
 
     # Obtaining the contours from the image
     contours, hierarchy = cv2.findContours(img, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
 
+    cards_in_image = []
     # draw rectangles
     for cnt in contours:
         area = cv2.contourArea(cnt)
@@ -31,9 +36,12 @@ def segment_image(img, model):
 
         crop, crop_point = get_cropped_card(img, cnt)
         corner_points = get_corners(crop)
-        corners = get_corner_cropped(img, crop, crop_point, corner_points, model)
+        corners, card_class = get_corner_cropped(img, crop, crop_point, corner_points, model)
+        if constants.play_game:
+            cards_in_image.append(card_class)
+            game.compute_score(card_class)
 
-    return None, img
+    return img, cards_in_image
 
 
 # Gets the cropped card out of the contour
@@ -94,7 +102,7 @@ def get_corner_cropped(img, crop, crop_point, corner_points, model):
 
     corners = []
     max_angle_prediction = 0
-    max_angle_class = 0
+    max_angle_class = -1
     max_angle = -1
     for pt in corner_points:
         x1 = 0 if pt[0] - corner_crop_size < 0 else int(pt[0] - corner_crop_size)
@@ -130,7 +138,7 @@ def get_corner_cropped(img, crop, crop_point, corner_points, model):
         print("Solution not found, closest card was:", ah.get_card_from_id(max_angle_class),
               "(", max_angle_prediction, ") - ", max_angle)
 
-    return corners
+    return corners, max_angle_class
 
 
 # method used to grayscale an image

@@ -7,6 +7,7 @@ from util.constants import images_to_load
 import service.image_processor as ip
 import util.constants as constants
 import util.app_helper as ah
+import util.game as game
 
 
 # Path for the initial image to start the algorithm on
@@ -37,18 +38,28 @@ def load_train():
 
 
 def video_process():
+
     # cap = cv2.VideoCapture('../resources/images/ssip_20k_cards/sequence_for_test.mp4')
     cap = cv2.VideoCapture(0)
     model = ns.start_training(None, None, None)
-    # model = None
     while cap.isOpened():
         ret, frame = cap.read()
+        frame_original = frame.copy()
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        segmentation_results, img = ip.segment_image(gray, model)
+        img, cards_in_image = ip.segment_image(gray, model)
+        if constants.play_game:
+            game.play_card(frame, cards_in_image)
+            game.show_score(frame)
         cv2.imshow("Gray", gray)
         cv2.imshow("Thresholded", img)
-        cv2.imshow("Original", frame)
-        if cv2.waitKey(100) & 0xFF == ord('q'):
+        cv2.imshow("Game Board", frame)
+        cv2.imshow("Live Camera", frame_original)
+
+        key = cv2.waitKey(100)
+        if key % 256 == 32:
+            game.reset_generated_cards()
+
+        if key & 0xFF == ord('q'):
             break
 
     cap.release()
@@ -63,11 +74,11 @@ if __name__ == '__main__':
     # ip.segment_image(il.load_image_cv("../resources/images/validate/validate3.png", is_float32=False))
 
     # Process the video
-    # video_process()
+    video_process()
 
     # Prediction
-    predict_image("../resources/images/validate/validate1.png")
-    predict_image("../resources/images/validate/validate4.png")
+    # predict_image("../resources/images/validate/validate1.png")
+    # predict_image("../resources/images/validate/validate4.png")
 
     # il.display_image(image_data[0][0].rectangle)
 
